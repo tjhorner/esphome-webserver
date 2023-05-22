@@ -86,6 +86,7 @@ export default defineConfig({
       "/lock": proxy_target,
       "/number": proxy_target,
       "/climate": proxy_target,
+      "/text_sensor": proxy_target,
       "/events": proxy_target,
       "/text": proxy_target,
       "/date": proxy_target,

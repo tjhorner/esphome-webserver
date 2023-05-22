@@ -25,6 +25,8 @@ export default class EspApp extends LitElement {
   @query("#beat")
   beat!: HTMLSpanElement;
 
+  firmwareVersion: String = "unknown";
+
   version: String = import.meta.env.PACKAGE_VERSION;
   config: Config = { ota: false, log: true, title: "", comment: "" };
 
@@ -75,6 +77,8 @@ export default class EspApp extends LitElement {
       console.dir(e);
       //alert("Lost event stream!")
     };
+
+    this.getFirmwareVersion();
   }
 
   isDark() {
@@ -91,6 +95,12 @@ export default class EspApp extends LitElement {
       this.beat.animate(this.frames, 1000);
     }
   }
+  
+  async getFirmwareVersion() {
+    const response = await fetch(`${getBasePath()}/text_sensor/upsy_desky_firmware_version`);
+    const data = await response.json();
+    this.firmwareVersion = data.value;
+  }
 
   ota() {
     if (this.config.ota) {
@@ -103,7 +113,12 @@ export default class EspApp extends LitElement {
         >
           <input class="btn" type="file" name="update" />
           <input class="btn" type="submit" value="Update" />
-        </form>`;
+        </form>
+
+        <div>
+          <p>Current Upsy Desky firmware version: ${this.firmwareVersion}</p>
+          <p>Learn how to update your firmware <a href="https://upsy-desky.tjhorner.dev/docs/firmware-updates/" target="_blank">here</a></p>
+        </div>`;
     }
   }
 
