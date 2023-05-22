@@ -10,7 +10,7 @@ import copy from "rollup-plugin-copy";
 import stripBanner from "rollup-plugin-strip-banner";
 import replace from "@rollup/plugin-replace";
 
-const proxy_target = "http://nodemcu.local";
+const proxy_target = "http://standingdesk.local";
 
 export default defineConfig({
   clearScreen: false,
@@ -92,6 +92,7 @@ export default defineConfig({
       "/lock": proxy_target,
       "/number": proxy_target,
       "/climate": proxy_target,
+      "/text_sensor": proxy_target,
       "/events": proxy_target,
     },
   },
