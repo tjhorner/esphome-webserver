@@ -11,6 +11,7 @@ interface entityConfig {
   detail: string;
   value: string;
   name: string;
+  device?: string;  // Device name for hierarchical URLs (sub-devices only)
   when: string;
   icon?: string;
   option?: string[];
@@ -45,6 +46,36 @@ export function getBasePath() {
 
 let basePath = getBasePath();
 
+// ID format detection and parsing helpers
+// New format: "domain/entity_name" or "domain/device_name/entity_name"
+// Old format: "domain-object_id" (deprecated)
+
+function isNewIdFormat(id: string): boolean {
+  return id.includes('/');
+}
+
+function parseDomainFromId(id: string): string {
+  if (isNewIdFormat(id)) {
+    return id.split('/')[0];
+  }
+  // Old format: domain-object_id
+  return id.split('-')[0];
+}
+
+function buildEntityActionUrl(entity: entityConfig, action: string): string {
+  if (isNewIdFormat(entity.unique_id)) {
+    // New format: /{domain}/{device?}/{name}/{action}
+    const entityName = encodeURIComponent(entity.name);
+    const devicePart = entity.device
+      ? `${encodeURIComponent(entity.device)}/`
+      : '';
+    return `${basePath}/${entity.domain}/${devicePart}${entityName}/${action}`;
+  }
+  // Old format: /{domain}/{object_id}/{action}
+  const objectId = entity.unique_id.split('-').slice(1).join('-');
+  return `${basePath}/${entity.domain}/${objectId}/${action}`;
+}
+
 interface RestAction {
   restAction(entity?: entityConfig, action?: string): void;
 }
@@ -63,13 +94,13 @@ export class EntityTable extends LitElement implements RestAction {
       const data = JSON.parse(messageEvent.data);
       let idx = this.entities.findIndex((x) => x.unique_id === data.id);
       if (idx === -1 && data.id) {
-        // Dynamically add discovered..
-        let parts = data.id.split("-");
+        // Dynamically add discovered entity
+        // domain comes from JSON (new format) or parsed from id (old format)
+        const domain = data.domain || parseDomainFromId(data.id);
         let entity = {
           ...data,
-          domain: parts[0],
+          domain: domain,
           unique_id: data.id,
-          id: parts.slice(1).join("-"),
         } as entityConfig;
         entity.has_action = this.hasAction(entity);
         if (entity.has_action) {
@@ -101,7 +132,7 @@ export class EntityTable extends LitElement implements RestAction {
   }
 
   restAction(entity: entityConfig, action: string) {
-    fetch(`${basePath}/${entity.domain}/${entity.id}/${action}`, {
+    fetch(buildEntityActionUrl(entity, action), {
       method: "POST",
       headers:{
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -125,7 +156,7 @@ export class EntityTable extends LitElement implements RestAction {
           ${this.entities.map(
             (component) => html`
               <tr>
-                <td>${component.name}</td>
+                <td>${component.device ? `[${component.device}] ` : ''}${component.name}</td>
                 <td>${component.state}</td>
                 ${this.has_controls
                   ? html`<td>
