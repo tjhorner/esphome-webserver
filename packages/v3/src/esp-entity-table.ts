@@ -18,6 +18,7 @@ interface entityConfig {
   detail: string;
   value: string;
   name: string;
+  device?: string;  // Device name for hierarchical URLs (sub-devices only)
   entity_category?: number;
   when: string;
   icon?: string;
@@ -64,6 +65,52 @@ export function getBasePath() {
   return str.endsWith("/") ? str.slice(0, -1) : str;
 }
 
+// ID format detection and parsing helpers
+// New format: "domain/entity_name" or "domain/device_name/entity_name"
+// Old format: "domain-object_id" (deprecated)
+
+function isNewIdFormat(id: string): boolean {
+  return id.includes('/');
+}
+
+function parseDomainFromId(id: string): string {
+  if (isNewIdFormat(id)) {
+    return id.split('/')[0];
+  }
+  // Old format: domain-object_id
+  return id.split('-')[0];
+}
+
+function buildEntityActionUrl(basePath: string, entity: entityConfig, action: string): string {
+  if (isNewIdFormat(entity.unique_id)) {
+    // New format: /{domain}/{device?}/{name}/{action}
+    const entityName = encodeURIComponent(entity.name);
+    const devicePart = entity.device
+      ? `${encodeURIComponent(entity.device)}/`
+      : '';
+    return `${basePath}/${entity.domain}/${devicePart}${entityName}/${action}`;
+  }
+  // Old format: /{domain}/{object_id}/{action}
+  const objectId = entity.unique_id.split('-').slice(1).join('-');
+  return `${basePath}/${entity.domain}/${objectId}/${action}`;
+}
+
+function buildIdFetchUrl(basePath: string, id: string): string {
+  // URL-encode each path segment for fetching detail_all
+  let urlPath: string;
+  if (isNewIdFormat(id)) {
+    // New format: domain/name or domain/device/name
+    urlPath = id.split('/').map((s: string) => encodeURIComponent(s)).join('/');
+  } else {
+    // Old format: domain-object_id -> domain/object_id
+    const parts = id.split('-');
+    const domain = parts[0];
+    const objectId = parts.slice(1).join('-');
+    urlPath = `${domain}/${encodeURIComponent(objectId)}`;
+  }
+  return `${basePath}/${urlPath}?detail=all`;
+}
+
 interface RestAction {
   restAction(entity?: entityConfig, action?: string): void;
 }
@@ -106,8 +153,8 @@ export class EntityTable extends LitElement implements RestAction {
         Object.assign(this.entities[idx], data);
         this.requestUpdate();
       } else {
-        // is it a `detail_all` event already?
-        if (data?.name) {
+        // is it a `detail_all` event already? (has name and domain)
+        if (data?.name && data?.domain) {
           this.addEntity(data);
         } else {
           if (this._unknown_state_events[data.id]) {
@@ -121,11 +168,7 @@ export class EntityTable extends LitElement implements RestAction {
             return;
           }
 
-          let parts = data.id.split('-');
-          let domain = parts[0];
-          let id = parts.slice(1).join('-');
-
-          fetch(`${this._basePath}/${domain}/${id}?detail=all`, {
+          fetch(buildIdFetchUrl(this._basePath, data.id), {
             method: 'GET',
           })
               .then((r) => {
@@ -177,13 +220,13 @@ export class EntityTable extends LitElement implements RestAction {
   addEntity(data: any) {
     let idx = this.entities.findIndex((x) => x.unique_id === data.id);
     if (idx === -1 && data.id) {
-      // Dynamically add discovered..
-      let parts = data.id.split("-");
+      // Dynamically add discovered entity
+      // domain comes from JSON (new format) or parsed from id (old format)
+      const domain = data.domain || parseDomainFromId(data.id);
       let entity = {
         ...data,
-        domain: parts[0],
+        domain: domain,
         unique_id: data.id,
-        id: parts.slice(1).join("-"),
         entity_category: data.entity_category,
         sorting_group: data.sorting_group ?? (EntityTable.ENTITY_CATEGORIES[parseInt(data.entity_category)] || EntityTable.ENTITY_UNDEFINED),
         value_numeric_history: [data.value],
@@ -193,11 +236,11 @@ export class EntityTable extends LitElement implements RestAction {
         this.has_controls = true;
       }
       this.entities.push(entity);
-      this.entities.sort((a, b) => {  
-        const sortA = a.sorting_weight ?? a.name;  
-        const sortB = b.sorting_weight ?? b.name;  
+      this.entities.sort((a, b) => {
+        const sortA = a.sorting_weight ?? a.name;
+        const sortB = b.sorting_weight ?? b.name;
         return a.sorting_group < b.sorting_group
-          ? -1  
+          ? -1
           : a.sorting_group === b.sorting_group
           ? sortA === sortB
             ? a.name.toLowerCase() < b.name.toLowerCase()
@@ -210,7 +253,7 @@ export class EntityTable extends LitElement implements RestAction {
       });
       this.requestUpdate();
     }
-    
+
   }
 
   hasAction(entity: entityConfig): boolean {
@@ -226,7 +269,7 @@ export class EntityTable extends LitElement implements RestAction {
   }
 
   restAction(entity: entityConfig, action: string) {
-    fetch(`${this._basePath}/${entity.domain}/${entity.id}/${action}`, {
+    fetch(buildEntityActionUrl(this._basePath, entity, action), {
       method: "POST",
       headers:{
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -309,7 +352,7 @@ export class EntityTable extends LitElement implements RestAction {
                           ></iconify-icon>`
                         : nothing}
                     </div>
-                    <div>${component.name}</div>
+                    <div>${component.device ? `[${component.device}] ` : ''}${component.name}</div>
                     <div>
                       ${this.has_controls && component.has_action
                         ? this.control(component)
