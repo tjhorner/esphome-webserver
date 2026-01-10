@@ -37,6 +37,9 @@ interface entityConfig {
   effects?: string[];
   effect?: string;
   has_action?: boolean;
+  // Water heater specific
+  away?: boolean;
+  is_on?: boolean;
 }
 
 export function getBasePath() {
@@ -587,5 +590,89 @@ class ActionRenderer {
     return html`${this._actionButton(this.entity, "| |", "open")}
     ${this._actionButton(this.entity, "☐", "stop")}
     ${this._actionButton(this.entity, "|-|", "close")}`;
+  }
+  render_water_heater() {
+    if (!this.entity) return;
+    let target_temp_slider = html``;
+    let target_temp_label = html``;
+    let has_target = false;
+    if (
+      this.entity.target_temperature_low !== undefined &&
+      this.entity.target_temperature_high !== undefined
+    ) {
+      has_target = true;
+      target_temp_label = html`Target:&nbsp;${this.entity
+        .target_temperature_low}&nbsp;..&nbsp;${this.entity
+        .target_temperature_high}`;
+      target_temp_slider = html`
+        ${this._range(
+          this.entity,
+          "set",
+          "target_temperature_low",
+          this.entity.target_temperature_low,
+          this.entity.min_temp,
+          this.entity.max_temp,
+          this.entity.step
+        )}
+        ${this._range(
+          this.entity,
+          "set",
+          "target_temperature_high",
+          this.entity.target_temperature_high,
+          this.entity.min_temp,
+          this.entity.max_temp,
+          this.entity.step
+        )}
+      `;
+    } else if (this.entity.target_temperature !== undefined) {
+      has_target = true;
+      target_temp_label = html`Target:&nbsp;${this.entity.target_temperature}`;
+      target_temp_slider = html`
+        ${this._range(
+          this.entity,
+          "set",
+          "target_temperature",
+          this.entity.target_temperature,
+          this.entity.min_temp,
+          this.entity.max_temp,
+          this.entity.step
+        )}
+      `;
+    }
+    let modes = html``;
+    if ((this.entity.modes ? this.entity.modes.length : 0) > 0) {
+      modes = html`Mode:<br />
+        ${this._select(
+          this.entity,
+          "set",
+          "mode",
+          this.entity.modes || [],
+          this.entity.state || ""
+        )}`;
+    }
+    // Away mode toggle (if supported)
+    let away = this.entity.away !== undefined
+      ? html`Away:&nbsp;${this._actionButton(
+          this.entity,
+          this.entity.away ? "ON" : "OFF",
+          `set?away=${!this.entity.away}`
+        )}<br />`
+      : html``;
+    // On/Off toggle (if supported)
+    let on_off = this.entity.is_on !== undefined
+      ? html`Power:&nbsp;${this._actionButton(
+          this.entity,
+          this.entity.is_on ? "ON" : "OFF",
+          `set?is_on=${!this.entity.is_on}`
+        )}<br />`
+      : html``;
+    const has_current = this.entity.current_temperature !== undefined;
+    let current_temp = has_current
+      ? html`Current:&nbsp;${this.entity.current_temperature}`
+      : html``;
+    return html`
+      <label>${current_temp}${has_current && has_target ? ', ' : ''}${target_temp_label}</label>
+      ${target_temp_slider} ${modes} ${away} ${on_off}
+    `;
   }
 }
